@@ -14,10 +14,10 @@ Base = declarative_base()
 
 class SQLAlchemyRecordsWrapper(BaseRecordsWrapper):
 
-    def __init__(self, settings, *args, **kwargs):
+    def __init__(self, settings, cache, *args, **kwargs):
         self._engine = create_engine(self.create_dsn(settings))
         super(SQLAlchemyRecordsWrapper, self).__init__(
-            settings, *args, **kwargs
+            settings, cache, *args, **kwargs
         )
 
     def create_dsn(self, settings):
@@ -82,6 +82,12 @@ class SQLAlchemyRecordsWrapper(BaseRecordsWrapper):
 
         for rec in query.all():
             yield Record.to_tuple(rec)
+
+    def set_latest(self, uuid, record):
+        pass
+
+    def get_latest(self, uuid):
+        pass
 
 
 class Record(Base):
