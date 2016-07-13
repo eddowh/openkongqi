@@ -74,16 +74,14 @@ global_settings = {
     'DATABASES': {
         'status': {
             'ENGINE': 'openkongqi.status.redisdb',
-            'NAME': '',
-            'USER': '',
-            'PASSWORD': '',
             'HOST': 'localhost',
-            'PORT': '6379',
+            'PORT': 6379,
             'DB_ID': 1,
         },
         'records': {
             'ENGINE': 'openkongqi.records.sqlite3',
             'NAME': 'openkongqi',
+            'CACHE_KEY': 'okq:{uuid}:latest',
         },
         'cache': {
             'ENGINE': 'openkongqi.cache.redisdb',

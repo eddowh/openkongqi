@@ -82,25 +82,42 @@ class SQLAlchemyRecordsWrapper(BaseRecordsWrapper):
                 self.set_latest(uuid, last_record)
 
     def get_records(self, uuid, start, end, fields=None):
-        query = self._cnx.query(Record) \
-            .filter(Record.uuid == self._apply_key_ctx(uuid))
-
-        # make input time parameters UTC or force it
-        def to_utc(dt):
-            if dt.tzinfo is None:
-                return dt.replace(tzinfo=pytz.utc)
-            else:
-                return dt.astimezone(pytz.utc)
+        # sanitize datetime input
         start_dt = to_utc(start)
         end_dt = to_utc(end)
-        query = query.filter(Record.ts >= start_dt).filter(Record.ts <= end_dt)
+
+        query = self._cnx.query(Record) \
+            .filter(Record.uuid == uuid) \
+            .filter(Record.ts >= start_dt) \
+            .filter(Record.ts <= end_dt)
 
         # filter which fields
         if fields is not None:
             query = query.filter(Record.key.in_(fields))
 
-        for rec in query.all():
-            yield Record.to_tuple(rec)
+        distinct_datetimes = [
+            q.ts for q in
+            query.group_by('ts')
+        ]
+
+        # group by datetime
+        for ts in distinct_datetimes:
+            yield {
+                'ts': ts.replace(tzinfo=pytz.utc),
+                'fields': {
+                    rec.key: rec.value
+                    for rec
+                    in query.filter(Record.ts == ts).all()
+                },
+            }
+
+
+def to_utc(dt):
+    """Make input time parameters UTC or force it."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=pytz.utc)
+    else:
+        return dt.astimezone(pytz.utc)
 
 
 class Record(Base):
@@ -115,22 +132,4 @@ class Record(Base):
         return (
             "<Record(ts='{ts}', uuid='{uuid}', key='{key}', value='{value}')>"
             .format(ts=self.ts, uuid=self.uuid, key=self.key, value=self.value)
-        )
-
-    @classmethod
-    def to_tuple(self, record):
-        """Return a tuple from a `Record` object.
-
-        .. note:: Inverse function of `Record.from_tuple`
-
-        The tuple returned should have the same data structure as
-        the `record` parameter passed to `Record.from_tuple`.
-
-        :returns: tuple
-        """
-        return (
-            record.ts,
-            record.uuid,
-            record.key,
-            record.value,
         )
