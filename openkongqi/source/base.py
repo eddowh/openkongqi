@@ -46,9 +46,13 @@ class BaseSource(object):
         self._station_map = get_station_map(
             settings['SOURCES'][name]['uuid'])
         self._tz = pytz.timezone(settings['SOURCES'][name]['tz'])
+        self._modname = settings['SOURCES'][name]['modname'].split('.')[-1]
         self._status = statusdb
         self._cache = file_cache
         self._records = recsdb
+        self._records.key_ctx = {
+            'modname': self._modname,
+        }
 
     def scrape(self):
         """Main entry point for :class:`openkongqi.source.BaseSource` instances.

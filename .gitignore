@@ -12,3 +12,6 @@ docs/_build
 build
 dist
 *.egg-info
+
+# dev
+celeryconfig_dev.py

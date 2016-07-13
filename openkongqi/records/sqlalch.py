@@ -4,7 +4,7 @@ import pytz
 
 from sqlalchemy import create_engine
 from sqlalchemy import Column, String, DateTime, Float
-from sqlalchemy.orm import scoped_session, sessionmaker, load_only
+from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
 from .base import BaseRecordsWrapper
@@ -38,33 +38,52 @@ class SQLAlchemyRecordsWrapper(BaseRecordsWrapper):
     def db_init(self):
         Base.metadata.create_all(bind=self.get_engine())
 
-    def is_duplicate(self, record):
-        dup_count = self._cnx.query(Record).filter_by(
-            ts=record[0].astimezone(pytz.utc),
-            uuid=record[1]
-        ).count()
-        return (not dup_count == 0)
-
     def get_engine(self):
         """Return engine url / data source name (DSN) of database."""
         return self._engine
 
+    def is_duplicate(self, record):
+        dup_count = self._cnx.query(Record).filter_by(
+            ts=record.ts, uuid=record.uuid, key=record.key
+        ).count()
+        return dup_count != 0
+
     def write_records(self, data):
         for uuid, records in data.items():
             rows = []
+            latest = self.get_latest(uuid)
+            if latest is not None:
+                # convert from ISO format and convert naive to UTC
+                latest_ts = self._string_to_ts(latest['ts'])
+                # if latest does exist, limit records to those
+                # that are later than the latest timestamp
+                records = filter(lambda r: r['ts'] > latest_ts, records)
+            last_record = None
             for record in records:
+                ts = record['ts'].astimezone(pytz.utc)
+                # update last record as we go
+                if last_record is None:
+                    last_record = record
+                else:
+                    if ts > last_record['ts']:
+                        last_record = record
+                # insert the records into SQL database
                 for fieldname, value in record['fields'].items():
-                    rows.append(
-                        Record(ts=record['ts'].astimezone(pytz.utc),
-                               uuid=uuid,
-                               key=fieldname,
-                               value=value)
-                    )
+                    row = Record(ts=ts,
+                                 uuid=self._apply_key_ctx(uuid),
+                                 key=fieldname,
+                                 value=value)
+                    if not self.is_duplicate(row):
+                        rows.append(row)
             self._cnx.add_all(rows)
-        self._cnx.commit()
+            self._cnx.commit()
+            # set latest cache value
+            if last_record:
+                self.set_latest(uuid, last_record)
 
     def get_records(self, uuid, start, end, fields=None):
-        query = self._cnx.query(Record).filter(Record.uuid == uuid)
+        query = self._cnx.query(Record) \
+            .filter(Record.uuid == self._apply_key_ctx(uuid))
 
         # make input time parameters UTC or force it
         def to_utc(dt):
@@ -82,12 +101,6 @@ class SQLAlchemyRecordsWrapper(BaseRecordsWrapper):
 
         for rec in query.all():
             yield Record.to_tuple(rec)
-
-    def set_latest(self, uuid, record):
-        pass
-
-    def get_latest(self, uuid):
-        pass
 
 
 class Record(Base):
